@@ -9,6 +9,14 @@ export interface Profile {
   updated_at: string;
 }
 
+export interface User {
+  id: string;
+  username: string;
+  password: string;
+  created_at: string;
+  type: string | null;
+}
+
 export interface Career {
   id: string;
   profile_id: string;
