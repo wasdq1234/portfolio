@@ -11,6 +11,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentStreamingMessageRef = useRef<string>('');
   const conversationIdRef = useRef<string>('');
+  const shouldScrollRef = useRef<boolean>(false);
 
   // 메시지 목록 자동 스크롤
   const scrollToBottom = () => {
@@ -18,7 +19,11 @@ export default function ChatInterface() {
   };
 
   useEffect(() => {
-    scrollToBottom();
+    // 스크롤이 필요한 경우에만 실행
+    if (shouldScrollRef.current) {
+      scrollToBottom();
+      shouldScrollRef.current = false;
+    }
   }, [messages]);
 
   // 초기 환영 메시지 추가
@@ -54,6 +59,7 @@ export default function ChatInterface() {
 
     setMessages(prev => [...prev, aiMessage]);
     setIsStreaming(true);
+    shouldScrollRef.current = true; // AI 응답 메시지 추가 시 스크롤 활성화
 
     try {
       while (true) {
@@ -131,8 +137,14 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
+    shouldScrollRef.current = true; // 사용자 메시지 추가 시 스크롤 활성화
 
     try {
+      // 현재 messages 상태 로그 출력
+      console.log('=== 요청 전 현재 messages 상태 ===');
+      console.log('전체 messages:', messages);
+      console.log('messages 개수:', messages.length);
+      
       // 환영 메시지를 제외한 대화 내역 구성
       const messageHistory: ChatMessageHistory[] = messages
         .filter(msg => msg.id !== 'welcome') // 환영 메시지 제외
@@ -142,10 +154,17 @@ export default function ChatInterface() {
           timestamp: msg.timestamp.toISOString(),
         }));
 
+      console.log('=== 구성된 대화 내역 ===');
+      console.log('messageHistory:', messageHistory);
+      console.log('messageHistory 개수:', messageHistory.length);
+
       const requestBody: ChatRequest = {
         message: inputMessage,
         messages: messageHistory,
       };
+
+      console.log('=== 최종 요청 데이터 ===');
+      console.log('requestBody:', JSON.stringify(requestBody, null, 2));
 
       const response = await fetch(`${apiUrl}/api/v1/chat/stream`, {
         method: 'POST',
@@ -171,6 +190,7 @@ export default function ChatInterface() {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      shouldScrollRef.current = true; // 오류 메시지 추가 시 스크롤 활성화
     } finally {
       setIsLoading(false);
       setIsStreaming(false);

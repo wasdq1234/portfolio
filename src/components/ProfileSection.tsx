@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Profile } from '@/types/database';
 
 interface ProfileSectionProps {
@@ -9,6 +9,13 @@ interface ProfileSectionProps {
 
 export default function ProfileSection({ profile }: ProfileSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showPhone, setShowPhone] = useState(false);
+
+  // URL 파라미터 확인
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    setShowPhone(urlParams.get('tell') === 'show');
+  }, []);
   return (
     <section className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8 mb-6">
       <div className="flex items-center gap-4 mb-6">
@@ -42,7 +49,7 @@ export default function ProfileSection({ profile }: ProfileSectionProps) {
             </div>
           )}
           
-          {profile.phone && (
+          {profile.phone && showPhone && (
             <div className="flex items-center gap-3 p-3 bg-green-50 rounded-xl border border-green-100">
               <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
                 <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
