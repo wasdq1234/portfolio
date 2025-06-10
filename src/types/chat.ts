@@ -10,6 +10,7 @@ export interface ChatStreamChunk {
   content: string;
   conversation_id: string;
   is_final: boolean;
+  chunk_type?: 'tool_calling' | 'tool_result' | 'ai_response';
   metadata: object | null;
 }
 
@@ -22,4 +23,5 @@ export interface ChatMessageHistory {
 export interface ChatRequest {
   message: string;
   messages: ChatMessageHistory[];
+  profile_id: string;
 } 

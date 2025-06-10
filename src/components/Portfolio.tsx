@@ -34,7 +34,7 @@ export default function Portfolio({ profileData }: PortfolioProps) {
           {/* 우측 영역: AI 채팅 인터페이스 */}
           <div className="lg:col-span-1">
             <div className="sticky top-4" style={{ height: 'calc(100vh - 2rem)' }}>
-              <ChatInterface />
+              <ChatInterface profileId={profileData.id} />
             </div>
           </div>
         </div>

@@ -3,13 +3,17 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChatMessage, ChatStreamChunk, ChatRequest, ChatMessageHistory } from '@/types/chat';
 
-export default function ChatInterface() {
+interface ChatInterfaceProps {
+  profileId: string;
+}
+
+export default function ChatInterface({ profileId }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [currentStatus, setCurrentStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const currentStreamingMessageRef = useRef<string>('');
   const conversationIdRef = useRef<string>('');
   const shouldScrollRef = useRef<boolean>(false);
 
@@ -46,72 +50,216 @@ export default function ChatInterface() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
-    currentStreamingMessageRef.current = '';
+    
+    // AI 응답 메시지 관리
+    let aiMessageId: string | null = null;
+    let aiResponseContent = '';
 
-    // AI 응답 메시지 초기화
-    const aiMessageId = `ai-${Date.now()}`;
-    const aiMessage: ChatMessage = {
-      id: aiMessageId,
-      content: '',
-      isUser: false,
-      timestamp: new Date(),
+    // 헬퍼 함수들 정의
+    const updateAiMessage = (messageId: string | null, content: string, conversationId: string) => {
+      if (!messageId) {
+        const newMessageId = `ai-${Date.now()}`;
+        aiMessageId = newMessageId;
+        
+        const newMessage: ChatMessage = {
+          id: newMessageId,
+          content: content,
+          isUser: false,
+          timestamp: new Date(),
+          conversationId: conversationId,
+        };
+        
+        setMessages(prev => [...prev, newMessage]);
+        shouldScrollRef.current = true;
+        console.log('새 AI 메시지 생성:', newMessageId);
+      } else {
+        setMessages(prev => prev.map(msg => 
+          msg.id === messageId 
+            ? { ...msg, content: content }
+            : msg
+        ));
+        console.log('기존 AI 메시지 업데이트:', messageId);
+      }
     };
 
-    setMessages(prev => [...prev, aiMessage]);
+    const isToolRelatedContent = (content: string): boolean => {
+      return content.includes('도구 호출 중:') || 
+             content.includes('도구 실행 결과:') ||
+             content.startsWith('도구 ');
+    };
+
+    const updateToolStatus = (content: string) => {
+      if (content.includes('도구 호출 중:')) {
+        setCurrentStatus('🔧 도구 호출 중...');
+      } else if (content.includes('도구 실행 결과:')) {
+        setCurrentStatus('📊 도구 호출 완료');
+      }
+    };
+
     setIsStreaming(true);
-    shouldScrollRef.current = true; // AI 응답 메시지 추가 시 스크롤 활성화
+    shouldScrollRef.current = true;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         
-        if (done) break;
+        if (done) {
+          console.log('스트림 읽기 완료 - done=true');
+          break;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        // 원시 데이터 디버깅 로그
+        const rawChunk = decoder.decode(value, { stream: true });
+        console.log('=== 원시 스트림 데이터 ===');
+        console.log('Raw chunk length:', rawChunk.length);
+        console.log('Raw chunk:', JSON.stringify(rawChunk));
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const dataContent = line.slice(6);
+        buffer += rawChunk;
+        
+        // SSE 형식: 두 개의 개행문자로 분리된 이벤트 처리
+        const events = buffer.split('\n\n');
+        // 마지막 부분은 불완전할 수 있으므로 버퍼에 보관
+        buffer = events.pop() || '';
+
+        for (const event of events) {
+          if (!event.trim()) {
+            console.log('빈 이벤트 무시');
+            continue;
+          }
+
+          console.log('=== 이벤트 처리 ===');
+          console.log('Event:', JSON.stringify(event));
+
+          // SSE 형식 파싱: "data: {JSON}" 또는 여러 줄의 "data:" 라인들
+          const lines = event.split('\n');
+          let dataContent = '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const lineData = line.slice(6); // "data: " 제거
+              dataContent += lineData;
+            }
+          }
+
+          if (!dataContent.trim()) {
+            console.log('데이터 내용이 없는 이벤트 무시');
+            continue;
+          }
+
+          console.log('추출된 데이터:', dataContent);
+          
+          // [DONE] 체크 (종료 조건)
+          if (dataContent.trim() === '[DONE]') {
+            console.log('🏁 스트림 완료: [DONE] 수신');
+            setIsStreaming(false);
+            setCurrentStatus('');
+            return;
+          }
+
+          // JSON 파싱 시도
+          try {
+            // 빈 문자열이나 null 체크
+            if (!dataContent || dataContent.trim().length === 0) {
+              console.log('빈 데이터 내용 무시');
+              continue;
+            }
+
+            const chunk: ChatStreamChunk = JSON.parse(dataContent);
+            console.log('=== 파싱 성공 ===');
+            console.log('Chunk:', chunk);
+            console.log('chunk_type:', chunk.chunk_type);
+            console.log('content:', chunk.content);
             
-            if (dataContent === '[DONE]') {
-              setIsStreaming(false);
-              return;
-            }
-
-            try {
-              const chunk: ChatStreamChunk = JSON.parse(dataContent);
-              currentStreamingMessageRef.current += chunk.content;
+            // conversation_id 저장
+            if (chunk.conversation_id) {
               conversationIdRef.current = chunk.conversation_id;
-
-              // 메시지 업데이트
-              setMessages(prev => prev.map(msg => 
-                msg.id === aiMessageId 
-                  ? { 
-                      ...msg, 
-                      content: currentStreamingMessageRef.current,
-                      conversationId: chunk.conversation_id 
-                    }
-                  : msg
-              ));
-
-              if (chunk.is_final) {
-                setIsStreaming(false);
-                return;
-              }
-            } catch (error) {
-              console.error('JSON 파싱 오류:', error);
             }
+
+            // chunk_type에 따른 처리
+            if (chunk.chunk_type === 'tool_calling') {
+              console.log('🔧 도구 호출 중');
+              setCurrentStatus('🔧 도구 호출 중...');
+              continue;
+              
+            } else if (chunk.chunk_type === 'tool_result') {
+              console.log('📊 도구 호출 완료');
+              setCurrentStatus('📊 도구 호출 완료');
+              continue;
+              
+            } else if (chunk.chunk_type === 'ai_response') {
+              console.log('💬 AI 응답 처리');
+              setCurrentStatus('💬 AI 응답 생성 중...');
+              
+              // AI 응답 내용 처리
+              let content = chunk.content || '';
+              
+              // "AI 응답:" 접두사 제거
+              if (content.startsWith('AI 응답:\n')) {
+                content = content.substring('AI 응답:\n'.length);
+                console.log('AI 응답: 접두사(\\n 포함) 제거됨');
+              } else if (content.startsWith('AI 응답:')) {
+                content = content.substring('AI 응답:'.length);
+                console.log('AI 응답: 접두사 제거됨');
+              }
+              
+              console.log('처리된 content:', content);
+              
+              // AI 응답 내용 누적
+              aiResponseContent += content;
+              
+              // 실시간 메시지 업데이트
+              updateAiMessage(aiMessageId, aiResponseContent, chunk.conversation_id);
+              
+            } else {
+              console.log('⚠️ 알 수 없는 chunk_type 또는 chunk_type 없음');
+              
+              // chunk_type이 없는 경우 내용 분석
+              let content = chunk.content || '';
+              
+              // 도구 관련 내용 필터링
+              if (isToolRelatedContent(content)) {
+                console.log('도구 관련 내용 필터링됨:', content);
+                updateToolStatus(content);
+                continue;
+              }
+              
+              // "AI 응답:" 접두사 제거
+              if (content.startsWith('AI 응답:\n')) {
+                content = content.substring('AI 응답:\n'.length);
+                setCurrentStatus('💬 AI 응답 생성 중...');
+              } else if (content.startsWith('AI 응답:')) {
+                content = content.substring('AI 응답:'.length);
+                setCurrentStatus('💬 AI 응답 생성 중...');
+              }
+              
+              // 빈 내용이면 처리하지 않음
+              if (!content.trim()) {
+                console.log('빈 내용으로 처리 생략');
+                continue;
+              }
+              
+              // AI 응답으로 처리
+              aiResponseContent += content;
+              updateAiMessage(aiMessageId, aiResponseContent, chunk.conversation_id);
+            }
+
+          } catch (error) {
+            console.error('❌ JSON 파싱 오류:', error);
+            console.error('파싱 실패한 원본 데이터:', JSON.stringify(dataContent));
+            console.error('파싱 실패한 이벤트:', JSON.stringify(event));
+            // 파싱 오류가 발생해도 스트림은 계속 진행
+            continue;
           }
         }
       }
     } catch (error) {
-      console.error('스트림 읽기 오류:', error);
+      console.error('❌ 스트림 읽기 오류:', error);
       setIsStreaming(false);
+      setCurrentStatus('');
       throw error;
     } finally {
       reader.releaseLock();
+      console.log('스트림 리더 해제됨');
     }
   };
 
@@ -137,6 +285,7 @@ export default function ChatInterface() {
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
     setIsLoading(true);
+    setCurrentStatus('⏳ 응답 대기중...');
     shouldScrollRef.current = true; // 사용자 메시지 추가 시 스크롤 활성화
 
     try {
@@ -161,12 +310,13 @@ export default function ChatInterface() {
       const requestBody: ChatRequest = {
         message: inputMessage,
         messages: messageHistory,
+        profile_id: profileId,
       };
 
       console.log('=== 최종 요청 데이터 ===');
       console.log('requestBody:', JSON.stringify(requestBody, null, 2));
 
-      const response = await fetch(`${apiUrl}/api/v1/chat/stream`, {
+      const response = await fetch(`${apiUrl}/api/v1/chat/stream_tools`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -194,6 +344,7 @@ export default function ChatInterface() {
     } finally {
       setIsLoading(false);
       setIsStreaming(false);
+      setCurrentStatus('');
     }
   };
 
@@ -225,6 +376,12 @@ export default function ChatInterface() {
             <p className="text-sm text-gray-500">포트폴리오에 대해 궁금한 것을 물어보세요</p>
           </div>
         </div>
+        {currentStatus && (
+          <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <span className="text-sm text-blue-700">{currentStatus}</span>
+          </div>
+        )}
       </div>
       
       <div className="flex-1 overflow-y-auto mb-4 bg-gradient-to-b from-gray-50 to-white rounded-xl p-4 border border-gray-100">
