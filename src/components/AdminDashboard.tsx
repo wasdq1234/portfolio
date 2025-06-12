@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Profile, Career, Project, User } from '@/types/database';
 
@@ -17,14 +17,12 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
 
   // 폼 상태
   const [showForm, setShowForm] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [formData, setFormData] = useState<any>({});
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [editingItem, setEditingItem] = useState<any>(null);
 
-  useEffect(() => {
-    loadData();
-  }, [activeTab]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'profiles') {
@@ -48,7 +46,11 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const logout = () => {
     window.location.reload();
@@ -60,7 +62,7 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
     setShowForm(true);
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: Profile | Career | Project) => {
     setEditingItem(item);
     setFormData(item);
     setShowForm(true);
@@ -94,7 +96,7 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
         }
       }
 
-      if (editingItem) {
+      if (editingItem && 'id' in editingItem) {
         await supabase
           .from(tableName)
           .update({
@@ -280,7 +282,7 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
                 <option value="">경력을 선택하세요</option>
                 {careers.map((career) => (
                   <option key={career.id} value={career.id}>
-                    {career.company_name} - {career.position || '직책 없음'}
+                    {career.company_name} - {career.position}
                   </option>
                 ))}
               </select>
@@ -295,6 +297,7 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
               <input
                 type="date"
                 placeholder="시작일"
+                required
                 value={formData.start_date ? formData.start_date.split('T')[0] : ''}
                 onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
@@ -307,18 +310,18 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
-            <input
-              type="text"
-              placeholder="기술스택 (쉼표로 구분)"
-              value={formData.technologies ? (Array.isArray(formData.technologies) ? formData.technologies.join(', ') : formData.technologies) : ''}
-              onChange={(e) => setFormData({ ...formData, technologies: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-            />
             <textarea
               placeholder="프로젝트 설명"
               rows={3}
               value={formData.description || ''}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+            />
+            <input
+              type="text"
+              placeholder="기술 스택 (쉼표로 구분)"
+              value={Array.isArray(formData.technologies) ? formData.technologies.join(', ') : (formData.technologies as string) || ''}
+              onChange={(e) => setFormData({ ...formData, technologies: e.target.value })}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
             />
             <div className="flex justify-end space-x-3">
@@ -340,186 +343,268 @@ export default function AdminDashboard({ currentUser }: AdminDashboardProps) {
         </div>
       );
     }
+  };
 
-    return null;
+  const renderDataTable = () => {
+    if (loading) {
+      return (
+        <div className="flex justify-center py-8">
+          <div className="text-gray-500">로딩 중...</div>
+        </div>
+      );
+    }
+
+    if (activeTab === 'profiles') {
+      return (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  이름
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  이메일
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  전화번호
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  주소
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  작업
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {profiles.map((profile) => (
+                <tr key={profile.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {profile.name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {profile.email}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {profile.phone}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {profile.address}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit(profile)}
+                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDelete(profile.id, 'profiles')}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (activeTab === 'careers') {
+      return (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  회사명
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  직책
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  기간
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  작업
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {careers.map((career) => (
+                <tr key={career.id}>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {career.company_name}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {career.position}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {career.start_date} ~ {career.end_date || '현재'}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit(career)}
+                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDelete(career.id, 'careers')}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    if (activeTab === 'projects') {
+      return (
+        <div className="bg-white shadow rounded-lg overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  프로젝트명
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  기간
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  기술 스택
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  작업
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {projects.map((project) => (
+                <tr key={project.id}>
+                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                     {project.project_name}
+                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {project.start_date} ~ {project.end_date || '진행중'}
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-500">
+                    {Array.isArray(project.technologies) 
+                      ? project.technologies.join(', ') 
+                      : project.technologies || ''}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <button
+                      onClick={() => handleEdit(project)}
+                      className="text-indigo-600 hover:text-indigo-900 mr-3"
+                    >
+                      수정
+                    </button>
+                    <button
+                      onClick={() => handleDelete(project.id, 'projects')}
+                      className="text-red-600 hover:text-red-900"
+                    >
+                      삭제
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* 헤더 */}
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <h1 className="text-3xl font-bold text-gray-900">포트폴리오 관리자</h1>
+    <div className="min-h-screen bg-gray-100">
+      <div className="bg-white shadow">
+        <div className="px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16 items-center">
+            <h1 className="text-xl font-semibold text-gray-900">
+              관리자 대시보드
+            </h1>
             <div className="flex items-center space-x-4">
-              <span className="text-gray-700">안녕하세요, {currentUser?.username}님</span>
+              <span className="text-sm text-gray-700">
+                {currentUser?.username}님 환영합니다
+              </span>
               <button
                 onClick={logout}
-                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium"
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium"
               >
                 로그아웃
               </button>
             </div>
           </div>
         </div>
-      </header>
+      </div>
 
-      {/* 탭 네비게이션 */}
-      <nav className="bg-white border-b border-gray-200">
+      <div className="py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex space-x-8">
-            {[
-              { id: 'profiles', name: '프로필' },
-              { id: 'careers', name: '경력' },
-              { id: 'projects', name: '프로젝트' }
-            ].map((tab) => (
+          {/* 탭 네비게이션 */}
+          <div className="mb-6">
+            <nav className="flex space-x-8">
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'profiles' | 'careers' | 'projects')}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === tab.id
+                onClick={() => setActiveTab('profiles')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'profiles'
                     ? 'border-indigo-500 text-indigo-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab.name}
+                프로필 관리
               </button>
-            ))}
+              <button
+                onClick={() => setActiveTab('careers')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'careers'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                경력 관리
+              </button>
+              <button
+                onClick={() => setActiveTab('projects')}
+                className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'projects'
+                    ? 'border-indigo-500 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                프로젝트 관리
+              </button>
+            </nav>
           </div>
-        </div>
-      </nav>
 
-      {/* 메인 컨텐츠 */}
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">
-              {activeTab === 'profiles' && '프로필 관리'}
-              {activeTab === 'careers' && '경력 관리'}
-              {activeTab === 'projects' && '프로젝트 관리'}
-            </h2>
+          {/* 추가 버튼 */}
+          <div className="mb-6">
             <button
               onClick={handleAdd}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium"
             >
-              새 {activeTab === 'profiles' && '프로필'}{activeTab === 'careers' && '경력'}{activeTab === 'projects' && '프로젝트'} 추가
+              {activeTab === 'profiles' && '새 프로필 추가'}
+              {activeTab === 'careers' && '새 경력 추가'}
+              {activeTab === 'projects' && '새 프로젝트 추가'}
             </button>
           </div>
 
+          {/* 폼 */}
           {renderForm()}
 
-          {loading ? (
-            <div className="text-center py-4">로딩 중...</div>
-          ) : (
-            <div className="bg-white shadow overflow-hidden sm:rounded-md">
-              <ul className="divide-y divide-gray-200">
-                {activeTab === 'profiles' && profiles.map((profile) => (
-                  <li key={profile.id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-lg font-medium text-indigo-600">{profile.name}</p>
-                        <p className="text-sm text-gray-900">{profile.email}</p>
-                        {profile.phone && <p className="text-sm text-gray-500">{profile.phone}</p>}
-                        {profile.address && <p className="text-sm text-gray-500">{profile.address}</p>}
-                        {profile.bio && <p className="text-sm text-gray-500 mt-2">{profile.bio}</p>}
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleEdit(profile)}
-                          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                        >
-                          수정
-                        </button>
-                        <button
-                          onClick={() => handleDelete(profile.id, 'profiles')}
-                          className="text-red-600 hover:text-red-900 text-sm font-medium"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-
-                {activeTab === 'careers' && careers.map((career) => (
-                  <li key={career.id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-lg font-medium text-indigo-600">{career.company_name}</p>
-                        <p className="text-sm text-gray-900">프로필: {profiles.find(p => p.id === career.profile_id)?.name || '알 수 없음'}</p>
-                        {career.position && <p className="text-sm text-gray-500">직책: {career.position}</p>}
-                        <p className="text-sm text-gray-500">
-                          기간: {career.start_date.split('T')[0]} ~ {career.end_date ? career.end_date.split('T')[0] : '현재'}
-                        </p>
-                        {career.job_description && <p className="text-sm text-gray-500 mt-2">{career.job_description}</p>}
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleEdit(career)}
-                          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                        >
-                          수정
-                        </button>
-                        <button
-                          onClick={() => handleDelete(career.id, 'careers')}
-                          className="text-red-600 hover:text-red-900 text-sm font-medium"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-
-                {activeTab === 'projects' && projects.map((project) => (
-                  <li key={project.id} className="px-6 py-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-lg font-medium text-indigo-600">{project.project_name}</p>
-                        <p className="text-sm text-gray-900">경력: {careers.find(c => c.id === project.career_id)?.company_name || '알 수 없음'}</p>
-                        {(project.start_date || project.end_date) && (
-                          <p className="text-sm text-gray-500">
-                            기간: {project.start_date ? project.start_date.split('T')[0] : '시작일 없음'} ~ {project.end_date ? project.end_date.split('T')[0] : '종료일 없음'}
-                          </p>
-                        )}
-                        {project.technologies && project.technologies.length > 0 && (
-                          <div className="mt-2">
-                            <div className="flex flex-wrap gap-2">
-                              {project.technologies.map((tech, index) => (
-                                <span
-                                  key={index}
-                                  className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                                >
-                                  {tech}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {project.description && <p className="text-sm text-gray-500 mt-2">{project.description}</p>}
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleEdit(project)}
-                          className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
-                        >
-                          수정
-                        </button>
-                        <button
-                          onClick={() => handleDelete(project.id, 'projects')}
-                          className="text-red-600 hover:text-red-900 text-sm font-medium"
-                        >
-                          삭제
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* 데이터 테이블 */}
+          {renderDataTable()}
         </div>
-      </main>
+      </div>
     </div>
   );
 } 
